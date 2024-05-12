@@ -17,22 +17,19 @@ class CustomModel(models.Model):
     class Meta:
         abstract = True
 
-
-class Subject(CustomModel):
+class Subject(CustomModel): # fan nomi 
     name = models.CharField(max_length=255)
 
     def __str__(self) -> str:
         return self.name
 
+class Course(CustomModel): # sinf nomi
+    def course_letter():
+        up_letters = "A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z"
+        up_letters_list = up_letters.split(',')
+        for i in up_letters_list:
+            yield (i,i)
 
-def course_letter():
-    up_letters = "A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z"
-    up_letters_list = up_letters.split(',')
-    for i in up_letters_list:
-        yield (i,i)
-
-
-class Course(CustomModel):
     letter = models.CharField(
         max_length=1,
         choices=course_letter()
@@ -65,8 +62,7 @@ class Course(CustomModel):
     def __str__(self) -> str:
         return self.name
 
-
-class Season(CustomModel):
+class Season(CustomModel): # mavsum yoki chorak
     name = models.CharField(
         max_length=255,
         help_text="Nomi",
@@ -82,8 +78,7 @@ class Season(CustomModel):
     def __str__(self) -> str:
         return self.name
 
-
-class LessonTime(CustomModel):
+class LessonTime(CustomModel): # dars vaqtlari
     name = models.CharField(
         max_length=255,
         help_text="Nomi",
@@ -104,7 +99,7 @@ class LessonTime(CustomModel):
     def __str__(self) -> str:
         return self.name
 
-class Lesson(CustomModel):
+class Lesson(CustomModel): # dars
     name = models.CharField(max_length=255, help_text="Dars nomi")
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, help_text="Dars fani")
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, help_text="Dars ustozi")    
@@ -127,7 +122,7 @@ class Lesson(CustomModel):
     def __str__(self) -> str:
         return self.name
 
-class Grade(CustomModel):
+class Grade(CustomModel): # baho
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE)
     grade = models.PositiveIntegerField(
@@ -141,10 +136,10 @@ class Grade(CustomModel):
     def __str__(self) -> str:
         return self.student.full_name
 
-class Attendance(CustomModel):
+class Attendance(CustomModel): # davomat
     season = models.ForeignKey(Season, on_delete=models.SET_NULL, null=True)
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE)
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name="lesson_attendance")
     date = models.DateField()
     status = models.CharField(max_length=255, choices=AttendanceEnum.get_status(), default='absent')
     description = models.TextField(blank=True, null=True)

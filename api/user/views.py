@@ -6,6 +6,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 
+from .models import Student
+
 
 
 class LoginApi(APIView):
@@ -23,9 +25,26 @@ class LoginApi(APIView):
             if user:
                 token,_ = Token.objects.get_or_create(user=user)
                 login(request, user)
-                return Response({
+                data = {
+                    "id": user.id,
+                    "role": user.role,
                     "phone_number": phone_number,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "middle_name": user.middle_name,
+                    "avatar": user.avatar.url,
                     "token": token.key
+                }
+
+                if user.role == 'student':
+                    student = Student.objects.get(id = user.id)
+                    data.update({
+                        "course_id": student.course.id,
+                        "course_name": student.course.name
+                    })
+
+                return Response({
+                    "data": data
                 })
             else:
                 return Response({

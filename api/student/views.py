@@ -1,17 +1,72 @@
 from django.shortcuts import render
-from django.db.models import Count, Case, When,  IntegerField
+from django.db.models import Count, Case, When,  IntegerField, TextField
 from django.utils import timezone
+from django.db import models
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 
 from api.user.models import Student, Teacher
-from api.main.models import Course, Grade, Attendance
+from api.main.models import Course, Grade, Attendance, Lesson
 from .permissions import IsStudent
 
+from django_filters.rest_framework import DjangoFilterBackend
 
-class MyClassmatesApi(APIView):
+
+
+
+def select_data(request, queryset):
+    data = request.query_params.get('_select')
+    if data:
+        data = data.split(',')
+        query_fields = []
+        for field in data:
+            query_fields.append(field)
+        return queryset.values(*query_fields)
+     
+    return queryset.values()
+    
+def sort_data(request, queryset):
+    data = request.query_params.get("sortBy")
+    if data:
+        data = data.split(',')
+        return queryset.order_by(*data)
+    return queryset
+
+def filter_date(request, queryset):
+    start_date = request.query_params.get("start_date")
+    end_date = request.query_params.get("end_date")
+        
+    if start_date and end_date:
+        return queryset.filter(created__range = [start_date, end_date])
+    
+    return queryset
+
+def filter_information(request, queryset):
+    ignore_keys = ["start_date", "end_date","sortBy", "_select"]
+    query_params_items = request.query_params.items()
+    query_fields = {}
+
+    for key, value in query_params_items:
+        if key in ignore_keys:
+            continue
+        query_fields[key] = value
+
+    return queryset.filter(**query_fields)
+
+def all_data(request, queryset):
+    queryset_filters_by_date = filter_date(request, queryset)
+    order_queryset_with_infromation = sort_data(request, queryset_filters_by_date)
+    filter_queryset_with_values = filter_information(request,order_queryset_with_infromation)
+    res = select_data(request, filter_queryset_with_values)
+
+    return res
+
+
+
+# o'quvchining sinfdoshlari haqida ma'lumotlar
+class StudentClassmatesApi(APIView):
     permission_classes = (IsAuthenticated, IsStudent, )
 
     def get_classmates(self, students: Student, student_id: int):
@@ -40,41 +95,13 @@ class MyClassmatesApi(APIView):
                 "phone_number": student.course.teacher.phone_number,
                 "avatar": student.course.teacher.avatar.url,
             },
-            "number_of_students": Student.objects.filter(course__id = course_id).aggregate(Count('id'))['id__count']
+            "number_of_students": Student.objects.filter(course__id = course_id).count()
         })
         
-    
-
-class StudentApi(APIView):
+# o'quvchining ma'lumotlarini yangilash
+class UpdateStudentInformationApi(APIView):
     permission_classes = (IsAuthenticated, IsStudent, )
 
-    def get(self, request, pk, *args, **kwargs):
-        try:
-            # annotate,aggregate
-            student = Student.objects.get(id = pk)
-            
-            return Response({
-                "data": {
-                    "id": student.id,
-                    "student_id": student.student_id.int,
-                    "first_name": student.first_name,
-                    "last_name": student.last_name,
-                    "middle_name": student.middle_name,
-                    "phone_number": student.phone_number,
-                    "course": {
-                        "id": student.course.id,
-                        "name": student.course.name,
-                        "leavel": student.course.leavel,
-                        "letter": student.course.letter,
-                    },
-                    "avatar": student.avatar.url
-                }
-            })
-        except:
-            return Response({
-                "error": "Bunday id li foydalanuvchi topilmadi!"
-            })
-    
     def patch(self, request, *args, **kwargs):
         data = request.data
         avatar = data.get("avatar", None)
@@ -89,129 +116,88 @@ class StudentApi(APIView):
                 "error": "File topilmadi !"
             })
 
-        
-class MyGradesApi(APIView):
-    permission_classes = (IsAuthenticated, IsStudent,)
-
-    def get_grades(self, grades: Grade):
-        for grade in grades:
-            yield {
-                "lesson": grade['lesson__name'],
-                "grade": grade['grade'],
-                "description": grade['description']
-            }
-    
-    def get(self, request, *args, **kwargs):
-        try:
-            date_from = request.GET.get('from').split(',')
-            date_to = request.GET.get('to').split(',')
-            start_date = timezone.datetime(int(date_from[0]), int(date_from[1]), int(date_from[2]))
-            end_date = timezone.datetime(int(date_to[0]), int(date_to[1]), int(date_to[2]))
-            grades = Grade.objects.filter(
-                created__gte = start_date,
-                created__lte = end_date,
-                student__id = request.user.id
-            ).select_related("lesson").values("lesson__name", "grade", "description")
-
-            return Response({
-                "data": self.get_grades(grades)
-            })
-        except:
-            return Response({
-                "error": "Noma'lumomt xatolik ro'y berdi!"
-            })
-    
-
-
-class MyAttendanceApi(APIView):
+# o'quvchining darslari
+class StudentLessonApi(APIView):
     permission_classes = (IsAuthenticated, IsStudent, )
 
-    def filter_all_date(self, data):
-        now_year = timezone.now().year
-        now_month = timezone.now().month
-        now_day = timezone.now().day
+    def get_lessons(self, request):
+        start_date = request.query_params.get("start_date", timezone.now())
+        end_date = request.query_params.get("end_date", timezone.now())
+        
+        student = Student.objects.get(id = request.user.id)
+        lessons = Lesson.objects.filter(course_id = student.course.id).values(
+            "id","name", "teacher_id", "teacher__first_name","teacher__last_name","lesson_time__start_time","lesson_time__continuity","lesson_time__name","week_day",
+        )
+        
+        data = []
+        for lesson in lessons:    
+            attendances = Attendance.objects.filter(
+                date__range = [start_date, end_date],
+                student_id = student.id,
+                lesson_id = lesson['id']
+            ).values("date", "status", "description")
+            
+            attendance_data = []
+            for attendance in attendances:
+                attendance_data.append({**attendance})
 
-        custom = data.get("custom", None)
-
-        year = int(data.get("year", now_year))
-        month = int(data.get("month", now_month))
-        day = int(data.get("day", now_day))
-
-        year_from = int(data.get("year[from]", now_year))
-        month_from = int(data.get("month[from]", now_month))
-        day_from = int(data.get("day[from]", now_day))
-
-        year_to = int(data.get("year[to]", now_year))
-        month_to = int(data.get("month[to]", now_month))
-        day_to = int(data.get("day[to]", now_day))
-
-        if (custom and custom == 'false') or not custom:
-            return {
-                "from_to": False,
-                "year": year,
-                "month": month,
-                "day": day
-            }
-        else:
-            return {
-                "from_to": True,
-                "year_from": year_from,
-                "month_from": month_from,
-                "day_from": day_from,
-                "year_to": year_to,
-                "month_to": month_to,
-                "day_to": day_to
-            }
+            
+            data.append({**lesson,"attendance": attendance_data})
+        return data
 
     def get(self, request, *args, **kwargs):
-        data = request.GET
-        filter_all_date = self.filter_all_date(data)
-        if filter_all_date['from_to']:
-
-            start_date = timezone.datetime(
-                year = filter_all_date['year_from'],
-                month = filter_all_date['month_from'],
-                day = filter_all_date['day_from']
-            )
-
-            end_date = timezone.datetime(
-                year = filter_all_date['year_to'],
-                month = filter_all_date['month_to'],
-                day = filter_all_date['day_to']
-            )
-
-            attendance = Attendance.objects.filter(
-                date__gte = start_date,
-                date__lte = end_date,
-                student__id = request.user.id
-            ).select_related('student', 'season', 'lesson').aggregate(
-                present_count = Count(Case(When(status='present', then=1), output_field=IntegerField())),
-                absent_count = Count(Case(When(status='absent', then=1), output_field=IntegerField())),
-                late_count = Count(Case(When(status='late', then=1), output_field=IntegerField())),
-                excused_count = Count(Case(When(status='excused', then=1), output_field=IntegerField())),
-                all_count = Count('status'),
-            )
-
-        else:
-            start_date = timezone.datetime(
-                year = filter_all_date['year'],
-                month = filter_all_date['month'],
-                day = filter_all_date['day']
-            )
-            attendance = Attendance.objects.filter(
-                date = start_date,
-                student__id = request.user.id
-            ).select_related('student', 'season', 'lesson').aggregate(
-                present_count = Count(Case(When(status='present', then=1), output_field=IntegerField())),
-                absent_count = Count(Case(When(status='absent', then=1), output_field=IntegerField())),
-                late_count = Count(Case(When(status='late', then=1), output_field=IntegerField())),
-                excused_count = Count(Case(When(status='excused', then=1), output_field=IntegerField())),
-                all_count = Count('status'),
-            )
+        lessons = self.get_lessons(request)
         return Response({
-            "present": attendance['present_count'],
-            "absent": attendance['absent_count'],
-            "late": attendance['late_count'],
-            "excused": attendance['excused_count'],
-            "all": attendance['all_count'],
+            "status": True,
+            "data": lessons
+        })
+
+# o'quvchining hattalik/kunlik/yilli darslari
+class StudentCalendarApi(APIView):
+    permission_classes = (IsAuthenticated, IsStudent, )
+
+    def get(self, request, *args, **kwargs):
+        course_id = Student.objects.get(id = request.user.id).course.id
+        lessons = all_data(request, Lesson.objects.all().filter(course_id = course_id))
+        data = []
+        for lesson in lessons:
+            data.append({**lesson})
+        return Response({
+            "data": data,
+        })
+
+# o'quvchining davomati
+class StudentAttendanceApi(APIView):
+    permission_classes = (IsAuthenticated, IsStudent, )
+
+    def get(self, request,*args, **kwargs):
+        attendances = Attendance.objects.all().filter(student_id = request.user.id)
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+            
+        if start_date and end_date:
+            attendances = attendances.filter(created__range = [start_date, end_date])
+        
+        attendances = filter_information(request, attendances)
+        attendances = sort_data(request,attendances)
+        attendances = select_data(request, attendances)
+
+        data = []
+        for attendance in attendances:
+            data.append({**attendance})
+
+        return Response({
+            "data": data
+        })
+
+# o'quvchining baholari
+class StudentGradeApi(APIView):
+    def get(self, request, *args, **kwargs):
+        grades = all_data(request, Grade.objects.all().filter(student_id = request.user.id))
+        data = []
+        for grade in grades:
+            data.append({**grade})
+        
+        return Response({
+            "data": data
         })

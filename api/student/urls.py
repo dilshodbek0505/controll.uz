@@ -1,15 +1,17 @@
 from django.urls import path
 from .views import (
-    MyClassmatesApi,
-    StudentApi,
-    MyGradesApi,
-    MyAttendanceApi
+    StudentCalendarApi,
+    StudentAttendanceApi,
+    StudentLessonApi,
+    StudentGradeApi,
+    StudentClassmatesApi
 )
 
-
 urlpatterns = [
-    path('student/classmates/', MyClassmatesApi.as_view()),
-    path('student/<int:pk>/', StudentApi.as_view()),
-    path('student/grades/', MyGradesApi.as_view()),
-    path('student/attendance', MyAttendanceApi.as_view())
+    path('calendar/', StudentCalendarApi.as_view()),
+    path('attendance/', StudentAttendanceApi.as_view()),
+    path('lesson/', StudentLessonApi.as_view()),
+    path('grades/', StudentGradeApi.as_view()),
+    path('classmates/', StudentClassmatesApi.as_view())
 ]
+
