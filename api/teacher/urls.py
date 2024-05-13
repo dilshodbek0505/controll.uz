@@ -1,11 +1,14 @@
 from django.urls import path
+
 from .views import (
-   AttendanceApi,
-   MyScheduleApi, 
+    TeacherDashboardApi,
+    TeacherJournalApi,
+    TeacherCalendarApi,
 )
 
 
 urlpatterns = [
-    path('teacher/attendance/',AttendanceApi.as_view()),
-    path('teacher/schedule/', MyScheduleApi.as_view())
+    path('dashboard/',TeacherDashboardApi.as_view()),
+    path('journal/', TeacherJournalApi.as_view()),
+    path('calendar/', TeacherCalendarApi.as_view())
 ]

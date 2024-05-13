@@ -1,13 +1,13 @@
 from typing import Collection
+from datetime import datetime, timedelta
 
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.utils import timezone
+# from django.utils import timezone
 
 from api.user.models import Teacher, Student
 
 from .enums import AttendanceEnum, WeekdaysEnum
-
 
 
 class CustomModel(models.Model):
@@ -72,7 +72,7 @@ class Season(CustomModel): # mavsum yoki chorak
     
     @property
     def end_of_season(self):
-        now_date = timezone.now().date()
+        now_date = datetime.now().date()
         return self.end_date - now_date
     
     def __str__(self) -> str:
@@ -93,32 +93,28 @@ class LessonTime(CustomModel): # dars vaqtlari
 
     @property
     def end_time(self):
-        return self.start_time + self.continuity
+        start_datetime = datetime.combine(datetime.today(), self.start_time)
+        end_datetime = start_datetime + timedelta(hours=self.continuity.hour, minutes=self.continuity.minute, seconds=self.continuity.second)
+        return end_datetime.time()
 
     
     def __str__(self) -> str:
         return self.name
 
 class Lesson(CustomModel): # dars
+    LESSON_STATUS = {
+        "tugagan": "tugagan",
+        "boshlangan": "boshlangan",
+        "kutilmoqda": "kutilmoqda"
+    }
+    
     name = models.CharField(max_length=255, help_text="Dars nomi")
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, help_text="Dars fani")
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, help_text="Dars ustozi")    
     lesson_time = models.ForeignKey(LessonTime, on_delete=models.SET_NULL, null = True)
     course = models.ForeignKey(Course, on_delete=models.CASCADE, help_text="Sinf")
     week_day = models.CharField(max_length=50, choices=WeekdaysEnum.get_days(), default='mon')
-
-    @property
-    def lesson_status(self):
-        now_time = timezone.now().time()
-        end_lesson_time = self.lesson_time.end_time
-        start_lesson_time = self.lesson_time.start_time
-        if now_time > end_lesson_time:
-            return "finished"
-        if now_time < end_lesson_time  and now_time > start_lesson_time:
-            return "started"
-        if now_time < start_lesson_time:
-            return "waiting"   
-
+    lesson_status = models.CharField(max_length=50, choices=LESSON_STATUS, default="kutilmoqda")
     def __str__(self) -> str:
         return self.name
 
@@ -132,7 +128,8 @@ class Grade(CustomModel): # baho
     )
     description = models.TextField(blank=True, null=True)
     season = models.ForeignKey(Season, on_delete=models.SET_NULL, null=True)
-    
+    date = models.DateField()
+
     def __str__(self) -> str:
         return self.student.full_name
 
